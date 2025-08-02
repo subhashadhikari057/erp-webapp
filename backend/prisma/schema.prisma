@@ -1,15 +1,87 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  email                String    @unique @db.VarChar(255)
+  password             String
+  name                 String?
+  phone                String?
+  isActive             Boolean   @default(true)
+  forcePasswordChange Boolean   @default(true)
+  tokenVersion         Int       @default(0)
+  companyId            String
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdById          String?
+  updatedById          String?
+  deletedById          String?
+  deletedAt            DateTime?
+  userRoles            UserRole[]
+  authLogs             AuthLog[] // 🔁 reverse relation
+
+  @@index([email])
+  @@index([companyId])
+}
+
+
+model Role {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  companyId   String
+  permissions String[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedById String?
+  deletedAt   DateTime?
+  userRoles   UserRole[]
+
+  @@index([companyId])
+  @@unique([name, companyId], name: "role_name_company_unique")
+}
+
+model UserRole {
+  id          String   @id @default(uuid())
+  userId      String
+  roleId      String
+  companyId   String
+  createdAt   DateTime @default(now())
+  createdById String?
+  user        User     @relation(fields: [userId], references: [id])
+  role        Role     @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId, companyId])
+  @@index([companyId])
+}
+
+model AuthLog {
+  id         String      @id @default(uuid())
+  userId     String
+  companyId  String
+  ip         String
+  userAgent  String
+  type       AuthLogType
+  success    Boolean
+  timestamp  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([timestamp])
+}
+
+enum AuthLogType {
+  LOGIN
+  LOGOUT
+  FAIL
 }
