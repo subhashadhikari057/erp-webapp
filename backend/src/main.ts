@@ -25,6 +25,8 @@ async function bootstrap() {
   // Enable cookies
   app.use(cookieParser());
 
+  // Global rate limiting (applied automatically via @UseGuards or module setup)
+
   // CORS setup for local frontend
   app.enableCors({
     origin: 'http://localhost:3000', // <-- Change as needed
