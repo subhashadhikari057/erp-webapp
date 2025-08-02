@@ -116,4 +116,148 @@ export class UserService {
 
     return { message: 'Password changed successfully.' };
   }
+
+  /**
+   * Get the current user's own audit logs (login/logout/fail).
+   * Returns the most recent 20 events, newest first.
+   */
+  async getOwnAuditLogs(userId: string, page = 1, pageSize = 5) {
+    const skip = (page - 1) * pageSize;
+  
+    // Get total count for pagination metadata
+    const [logs, total] = await Promise.all([
+      this.prisma.authLog.findMany({
+        where: { userId },
+        orderBy: { timestamp: 'desc' },
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          type: true,
+          success: true,
+          ip: true,
+          userAgent: true,
+          timestamp: true,
+        },
+      }),
+      this.prisma.authLog.count({ where: { userId } }),
+    ]);
+  
+    return {
+      data: logs,
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+  
+
+  /**
+   * Get all active sessions for the current user.
+   * Returns the most recent 10 sessions (customize as needed).
+   */
+  async getMyActiveSessions(userId: string) {
+    return this.prisma.session.findMany({
+      where: {
+        userId,
+        isActive: true,
+      },
+      orderBy: {
+        lastSeenAt: 'desc',
+      },
+      take: 10, // adjust or paginate as needed
+      select: {
+        id: true,
+        userAgent: true,
+        ip: true,
+        createdAt: true,
+        lastSeenAt: true,
+        isActive: true,
+        revokedAt: true,
+      },
+    });
+  }
+
+  /**
+   * Logout from all active sessions (revoke all sessions for the user).
+   * This will mark all active sessions as inactive.
+   */
+  async logoutFromAllSessions(userId: string) {
+    try {
+      const updateResult = await this.prisma.session.updateMany({
+        where: {
+          userId,
+          isActive: true,
+        },
+        data: {
+          isActive: false,
+          revokedAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        message: `Logged out from ${updateResult.count} active sessions`,
+        sessionsRevoked: updateResult.count,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to logout from all sessions',
+        sessionsRevoked: 0,
+      };
+    }
+  }
+
+  /**
+   * Terminate a specific session by ID.
+   * Only allows terminating sessions that belong to the current user.
+   */
+  async terminateSession(userId: string, sessionId: string) {
+    try {
+      // First, check if the session exists and belongs to the user
+      const session = await this.prisma.session.findFirst({
+        where: {
+          id: sessionId,
+          userId,
+        },
+      });
+
+      if (!session) {
+        return {
+          success: false,
+          message: 'Session not found or does not belong to you',
+        };
+      }
+
+      if (!session.isActive) {
+        return {
+          success: false,
+          message: 'Session is already inactive',
+        };
+      }
+
+      // Terminate the session
+      await this.prisma.session.update({
+        where: {
+          id: sessionId,
+        },
+        data: {
+          isActive: false,
+          revokedAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Session terminated successfully',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to terminate session',
+      };
+    }
+  }
 }

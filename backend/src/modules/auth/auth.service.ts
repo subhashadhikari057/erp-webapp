@@ -7,6 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -24,7 +25,7 @@ export class AuthService {
   ) {}
 
   // Handles user login
-  async login(dto: LoginDto): Promise<TokenDto> {
+  async login(dto: LoginDto, ip: string, userAgent: string): Promise<TokenDto> {
     if (!dto.email || !dto.password) {
       throw new BadRequestException('Email and password are required');
     }
@@ -40,16 +41,14 @@ export class AuthService {
     });
 
     if (!user) {
-      // Log failed login
       throw new UnauthorizedException('User with this email does not exist');
     }
     if (!user.isActive) {
-      // Log failed login
       await this.logAuthEvent({
         userId: user.id,
         companyId: user.companyId,
-        ip: '', // set in controller if desired
-        userAgent: '',
+        ip,
+        userAgent,
         type: 'FAIL',
         success: false,
       });
@@ -58,25 +57,23 @@ export class AuthService {
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) {
-      // Log failed login
       await this.logAuthEvent({
         userId: user.id,
         companyId: user.companyId,
-        ip: '', // set in controller if desired
-        userAgent: '',
+        ip,
+        userAgent,
         type: 'FAIL',
         success: false,
       });
       throw new UnauthorizedException('Incorrect password');
     }
 
-    // ✅ Update lastLoginAt on successful login
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
-    // Combine all permissions from user roles
+    // Permissions extraction
     const permissions = user.userRoles.flatMap(ur => ur.role.permissions);
 
     const payload: JwtPayload = {
@@ -92,18 +89,37 @@ export class AuthService {
       this.signRefreshToken(payload),
     ]);
 
+    // Create session after successful authentication
+    await this.createSession({
+      userId: user.id,
+      companyId: user.companyId,
+      ip,
+      userAgent,
+      refreshToken,
+    });
+
+    // Log successful login
+    await this.logAuthEvent({
+      userId: user.id,
+      companyId: user.companyId,
+      ip,
+      userAgent,
+      type: 'LOGIN',
+      success: true,
+    });
+
     return { accessToken, refreshToken };
   }
 
-  // Refreshes a user's access token
-  async refreshToken(dto: RefreshTokenDto): Promise<TokenDto> {
+  // Refresh token logic
+  async refreshToken(dto: RefreshTokenDto, ip: string, userAgent: string): Promise<TokenDto> {
     try {
       const publicKeyPath = this.config.get<string>('JWT_PUBLIC_KEY_PATH');
       if (!publicKeyPath) {
         throw new Error('JWT_PUBLIC_KEY_PATH is not configured');
       }
       const publicKey = readFileSync(join(process.cwd(), publicKeyPath), 'utf8');
-      
+
       const payload = await this.jwtService.verifyAsync<JwtPayload>(dto.refreshToken, {
         publicKey,
         algorithms: ['RS256'],
@@ -124,6 +140,7 @@ export class AuthService {
         throw new UnauthorizedException('Invalid or expired refresh token');
       }
 
+      // Permissions extraction
       const permissions = user.userRoles.flatMap(ur => ur.role.permissions);
 
       const newPayload: JwtPayload = {
@@ -139,14 +156,22 @@ export class AuthService {
         this.signRefreshToken(newPayload),
       ]);
 
+      // Update session lastSeenAt and token hash for the refresh
+      await this.updateSession({
+        userId: user.id,
+        oldTokenHash: this.hashToken(dto.refreshToken),
+        newTokenHash: this.hashToken(refreshToken),
+        ip,
+        userAgent,
+      });
+
       return { accessToken, refreshToken };
     } catch (err) {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
 
-
-  // Sign access token
+  // Sign tokens
   private async signAccessToken(payload: JwtPayload): Promise<string> {
     return this.jwtService.signAsync(payload, {
       algorithm: 'RS256',
@@ -154,7 +179,6 @@ export class AuthService {
     });
   }
 
-  // Sign refresh token
   private async signRefreshToken(payload: JwtPayload): Promise<string> {
     return this.jwtService.signAsync(payload, {
       algorithm: 'RS256',
@@ -162,7 +186,7 @@ export class AuthService {
     });
   }
 
-  // Helper: decode a JWT (access token) without verifying signature
+  // Decode token helper
   decodeJwt(token: string): JwtPayload {
     try {
       const [, payload] = token.split('.');
@@ -172,7 +196,121 @@ export class AuthService {
     }
   }
 
-  // Log login/logout/fail events
+  // Hash token for secure storage
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  // Create session during login
+  private async createSession({
+    userId,
+    companyId,
+    ip,
+    userAgent,
+    refreshToken,
+  }: {
+    userId: string;
+    companyId: string;
+    ip: string;
+    userAgent: string;
+    refreshToken: string;
+  }) {
+    try {
+      const tokenHash = this.hashToken(refreshToken);
+      
+      await this.prisma.session.create({
+        data: {
+          userId,
+          companyId,
+          ip: ip || '',
+          userAgent: userAgent || '',
+          tokenHash,
+          isActive: true,
+          lastSeenAt: new Date(),
+        },
+      });
+    } catch (error) {
+      // Don't throw on session creation failure, just log it
+      console.error('Failed to create session:', error);
+    }
+  }
+
+  // Update session during token refresh
+  private async updateSession({
+    userId,
+    oldTokenHash,
+    newTokenHash,
+    ip,
+    userAgent,
+  }: {
+    userId: string;
+    oldTokenHash: string;
+    newTokenHash: string;
+    ip: string;
+    userAgent: string;
+  }) {
+    try {
+      await this.prisma.session.updateMany({
+        where: {
+          userId,
+          tokenHash: oldTokenHash,
+          isActive: true,
+        },
+        data: {
+          tokenHash: newTokenHash,
+          lastSeenAt: new Date(),
+          ip: ip || '',
+          userAgent: userAgent || '',
+        },
+      });
+    } catch (error) {
+      // Don't throw on session update failure, just log it
+      console.error('Failed to update session:', error);
+    }
+  }
+
+  // Logout and revoke session
+  async logout(refreshToken: string, ip: string, userAgent: string): Promise<{ message: string }> {
+    try {
+      const tokenHash = this.hashToken(refreshToken);
+      
+      // Mark session as inactive
+      await this.prisma.session.updateMany({
+        where: {
+          tokenHash,
+          isActive: true,
+        },
+        data: {
+          isActive: false,
+          revokedAt: new Date(),
+        },
+      });
+
+      // Try to get user info for logging (don't fail if we can't)
+      try {
+        const payload = this.decodeJwt(refreshToken);
+        if (payload.userId) {
+          await this.logAuthEvent({
+            userId: payload.userId,
+            companyId: payload.companyId,
+            ip,
+            userAgent,
+            type: 'LOGOUT',
+            success: true,
+          });
+        }
+      } catch {
+        // Silent fail on logging
+      }
+
+      return { message: 'Logged out successfully' };
+    } catch (error) {
+      // Even if session revocation fails, return success to avoid info leakage
+      return { message: 'Logged out successfully' };
+    }
+  }
+
+  // Log events
   async logAuthEvent({
     userId,
     companyId,
@@ -191,7 +329,7 @@ export class AuthService {
     try {
       await this.prisma.authLog.create({
         data: {
-          userId: userId || '-',             // If userId is required as string, handle similarly
+          userId: userId || '-',
           companyId: companyId || '-',
           ip: ip || '',
           userAgent: userAgent || '',
@@ -199,9 +337,8 @@ export class AuthService {
           success,
         },
       });
-    } catch (err) {
-      // Optional: log this error to a monitoring service
-      // Don't throw — we don't want to break login/logout if logging fails
+    } catch {
+      // Don't throw on logging failure
     }
   }
 }

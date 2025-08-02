@@ -26,6 +26,7 @@ model User {
   deletedAt            DateTime?
   userRoles            UserRole[]
   authLogs             AuthLog[] // 🔁 reverse relation
+  sessions             Session[]
 
   @@index([email])
   @@index([companyId])
@@ -84,4 +85,24 @@ enum AuthLogType {
   LOGIN
   LOGOUT
   FAIL
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String
+  companyId   String
+  userAgent   String
+  ip          String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  revokedAt   DateTime?
+  tokenHash   String   // Store a hash of the refresh token
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([createdAt])
 }
