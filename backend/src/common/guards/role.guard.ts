@@ -34,16 +34,25 @@ import {
       const request = context.switchToHttp().getRequest();
       const user: JwtPayload = request.user;
 
-      // Ensure user exists and has permissions
-      if (!user || !user.permissions) {
+      // Ensure user exists
+      if (!user) {
         throw new ForbiddenException('Authentication required');
+      }
+
+      // Superadmin bypasses all permission checks
+      if (user.roleIds.includes('superadmin')) {
+        return true;
+      }
+
+      // Ensure regular users have permissions
+      if (!user.permissions || user.permissions.length === 0) {
+        throw new ForbiddenException('No permissions assigned');
       }
   
       // Check if user has any of the required permissions
-      const hasPermission = user.permissions.length > 0 && 
-        requiredPermissions.some((permission) =>
-          user.permissions.includes(permission)
-        );
+      const hasPermission = requiredPermissions.some((permission) =>
+        user.permissions.includes(permission)
+      );
   
       if (!hasPermission) {
         throw new ForbiddenException(

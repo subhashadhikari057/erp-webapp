@@ -8,8 +8,6 @@
   "scripts": {
     "build": "nest build",
     "seed": "ts-node prisma/seed.ts",
-    "seed:permissions": "ts-node prisma/seed-permissions.ts",
-    "seed:roles": "ts-node prisma/seed-roles.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
