@@ -63,7 +63,7 @@ graph TD
     N --> P[Update req.tenantContext]
     O --> P
     P --> Q[Controller Method]
-    Q --> R[@Tenant() Decorator]
+    Q --> R["@Tenant() Decorator"]
     R --> S[Return Tenant Data]
     
     L --> Q
@@ -92,7 +92,7 @@ graph LR
     end
     
     subgraph "Controller Layer"
-        D1[@Tenant() Decorator]
+        D1["@Tenant() Decorator"]
         D2[Controller Methods]
     end
     
