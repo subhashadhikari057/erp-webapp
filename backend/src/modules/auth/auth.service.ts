@@ -34,7 +34,15 @@ export class AuthService {
       include: {
         userRoles: {
           include: {
-            role: true,
+            role: {
+              include: {
+                rolePermissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -73,8 +81,10 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    // Permissions extraction
-    const permissions = user.userRoles.flatMap(ur => ur.role.permissions);
+    // Permissions extraction from RolePermissions
+    const permissions = user.userRoles.flatMap(ur => 
+      ur.role.rolePermissions.map(rp => rp.permission.name)
+    );
 
     const payload: JwtPayload = {
       userId: user.id,
@@ -130,7 +140,15 @@ export class AuthService {
         include: {
           userRoles: {
             include: {
-              role: true,
+              role: {
+                include: {
+                  rolePermissions: {
+                    include: {
+                      permission: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -140,8 +158,10 @@ export class AuthService {
         throw new UnauthorizedException('Invalid or expired refresh token');
       }
 
-      // Permissions extraction
-      const permissions = user.userRoles.flatMap(ur => ur.role.permissions);
+      // Permissions extraction from RolePermissions
+      const permissions = user.userRoles.flatMap(ur => 
+        ur.role.rolePermissions.map(rp => rp.permission.name)
+      );
 
       const newPayload: JwtPayload = {
         userId: user.id,
