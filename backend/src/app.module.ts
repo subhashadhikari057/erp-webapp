@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -10,6 +10,8 @@ import { UserModule } from './modules/users/user.module';
 import { SuperadminModule } from './modules/superadmin/superadmin.module';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { RATE_LIMIT_CONFIG } from './config/rate-limit.config';
+import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
+import { TenantResolverService } from './common/services/tenant-resolver.service';
 
 @Module({
   imports: [
@@ -36,10 +38,19 @@ import { RATE_LIMIT_CONFIG } from './config/rate-limit.config';
   providers: [
     AppService, 
     PrismaService,
+    TenantResolverService,
     {
       provide: APP_GUARD,
       useClass: CustomThrottlerGuard,
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply tenant context middleware to all routes
+    // This runs before any controller and resolves tenant context
+    consumer
+      .apply(TenantContextMiddleware)
+      .forRoutes('*'); // Apply to all routes
+  }
+}
