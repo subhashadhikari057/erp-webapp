@@ -6,6 +6,85 @@ This document outlines the comprehensive security improvements implemented durin
 
 ---
 
+## 🏗️ Security Architecture Overview
+
+### Multi-Layer Security Model
+```mermaid
+graph TB
+    Request[🌐 HTTP Request] --> Helmet[🛡️ Helmet Security Headers]
+    Helmet --> RateLimit[⏱️ Rate Limiting]
+    RateLimit --> Auth[🔐 JWT Authentication]
+    Auth --> RoleGuard[🎭 Role Guard]
+    RoleGuard --> PermCheck[🔑 Permission Check]
+    PermCheck --> TenantCheck[🏢 Tenant Isolation]
+    TenantCheck --> Controller[🎯 Controller Logic]
+    
+    Controller --> Success[✅ Success Response]
+    
+    Helmet -->|Attack Detected| Block1[🚫 Security Block]
+    RateLimit -->|Rate Exceeded| Block2[🚫 Rate Limit Block]
+    Auth -->|Invalid Token| Block3[🚫 Auth Block]
+    RoleGuard -->|No Role| Block4[🚫 Role Block]
+    PermCheck -->|No Permission| Block5[🚫 Permission Block]
+    TenantCheck -->|Wrong Tenant| Block6[🚫 Tenant Block]
+    
+    Block1 --> ErrorFilter[🔧 Global Error Filter]
+    Block2 --> ErrorFilter
+    Block3 --> ErrorFilter
+    Block4 --> ErrorFilter
+    Block5 --> ErrorFilter
+    Block6 --> ErrorFilter
+    
+    ErrorFilter --> LogError[📝 Error Logging]
+    ErrorFilter --> ErrorResponse[❌ Error Response]
+    
+    style Request fill:#e3f2fd
+    style Helmet fill:#4caf50,stroke:#fff,color:#fff
+    style RateLimit fill:#ff9800,stroke:#fff,color:#fff
+    style Auth fill:#2196f3,stroke:#fff,color:#fff
+    style Success fill:#4caf50,stroke:#fff,color:#fff
+    style Block1 fill:#f44336,stroke:#fff,color:#fff
+    style Block2 fill:#f44336,stroke:#fff,color:#fff
+    style Block3 fill:#f44336,stroke:#fff,color:#fff
+    style Block4 fill:#f44336,stroke:#fff,color:#fff
+    style Block5 fill:#f44336,stroke:#fff,color:#fff
+    style Block6 fill:#f44336,stroke:#fff,color:#fff
+```
+
+### Permission System Flow
+```mermaid
+flowchart TD
+    User[👤 User Request] --> JWT[🔐 JWT Token]
+    JWT --> Extract[📋 Extract Payload]
+    
+    Extract --> UserInfo[👤 User Info]
+    Extract --> Roles[🎭 Role IDs]
+    Extract --> Permissions[🔑 Permissions Array]
+    Extract --> Company[🏢 Company ID]
+    
+    Permissions --> SuperCheck{🌟 Superadmin?}
+    SuperCheck -->|Yes| SuperBypass[✅ Bypass All Checks]
+    SuperCheck -->|No| PermCheck[🔍 Check Required Permissions]
+    
+    PermCheck --> HasPerm{🔑 Has Permission?}
+    HasPerm -->|Yes| TenantCheck[🏢 Tenant Context Check]
+    HasPerm -->|No| Deny[❌ Access Denied]
+    
+    TenantCheck --> SameTenant{🏢 Same Company?}
+    SameTenant -->|Yes| Allow[✅ Access Granted]
+    SameTenant -->|No| DenyTenant[❌ Tenant Access Denied]
+    
+    SuperBypass --> Allow
+    
+    style User fill:#e3f2fd
+    style SuperBypass fill:#ff6b6b,stroke:#fff,color:#fff
+    style Allow fill:#4caf50,stroke:#fff,color:#fff
+    style Deny fill:#f44336,stroke:#fff,color:#fff
+    style DenyTenant fill:#f44336,stroke:#fff,color:#fff
+```
+
+---
+
 ## 🔒 Core Security Enhancements
 
 ### 1. **Global Exception Handling**

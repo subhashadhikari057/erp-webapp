@@ -32,6 +32,106 @@ The Auth Module provides comprehensive authentication and authorization function
 
 ## 🏗️ Architecture
 
+### Authentication Flow Diagram
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthController
+    participant AuthService
+    participant Database
+    participant JwtService
+    
+    Client->>AuthController: POST /auth/login<br/>{email, password}
+    AuthController->>AuthService: login(loginDto)
+    
+    AuthService->>Database: findUser(email)
+    Database-->>AuthService: User data
+    
+    AuthService->>AuthService: validatePassword(password)
+    AuthService->>Database: updateLastLogin()
+    AuthService->>Database: createSession()
+    
+    AuthService->>JwtService: generateAccessToken(payload)
+    JwtService-->>AuthService: JWT Access Token
+    
+    AuthService->>JwtService: generateRefreshToken(payload)
+    JwtService-->>AuthService: JWT Refresh Token
+    
+    AuthService->>Database: logAuthEvent(SUCCESS)
+    
+    AuthService-->>AuthController: {accessToken, refreshToken, user}
+    AuthController-->>Client: Set cookies + JSON response
+```
+
+### JWT Token Lifecycle
+```mermaid
+flowchart TD
+    Login[🔐 Login Request] --> Validate{👤 Validate User}
+    Validate -->|Success| Generate[🔑 Generate Tokens]
+    Validate -->|Fail| LoginFail[❌ Login Failed]
+    
+    Generate --> AT[📄 Access Token<br/>15 min expiry]
+    Generate --> RT[🔄 Refresh Token<br/>7 days expiry]
+    
+    AT --> UseAPI[🌐 API Requests]
+    UseAPI --> CheckAT{⏰ Access Token Valid?}
+    CheckAT -->|Valid| APISuccess[✅ API Response]
+    CheckAT -->|Expired| RefreshFlow[🔄 Refresh Flow]
+    
+    RefreshFlow --> CheckRT{⏰ Refresh Token Valid?}
+    CheckRT -->|Valid| NewTokens[🔑 New Token Pair]
+    CheckRT -->|Expired| ForceLogin[🔐 Force Re-login]
+    
+    NewTokens --> AT
+    NewTokens --> RT
+    
+    style Login fill:#e1f5fe
+    style Generate fill:#4caf50,stroke:#fff,color:#fff
+    style AT fill:#ffeb3b,stroke:#333,color:#333
+    style RT fill:#ff9800,stroke:#fff,color:#fff
+    style APISuccess fill:#4caf50,stroke:#fff,color:#fff
+    style LoginFail fill:#f44336,stroke:#fff,color:#fff
+    style ForceLogin fill:#f44336,stroke:#fff,color:#fff
+```
+
+### Multi-Tenant Security Model
+```mermaid
+graph TB
+    Request[📱 Client Request] --> JWT{🔐 JWT Token}
+    JWT --> Valid{✅ Valid Token?}
+    Valid -->|No| Deny[❌ 401 Unauthorized]
+    Valid -->|Yes| Extract[📋 Extract Payload]
+    
+    Extract --> UserID[👤 User ID]
+    Extract --> CompanyID[🏢 Company ID]  
+    Extract --> Roles[🎭 Role IDs]
+    Extract --> Permissions[🔑 Permissions]
+    
+    UserID --> CheckUser{👤 User Active?}
+    CompanyID --> CheckCompany{🏢 Company Active?}
+    Roles --> CheckRoles{🎭 Required Role?}
+    Permissions --> CheckPerms{🔑 Required Permission?}
+    
+    CheckUser -->|No| DenyUser[❌ User Inactive]
+    CheckCompany -->|No| DenyCompany[❌ Company Inactive]
+    CheckRoles -->|No| DenyRole[❌ Insufficient Role]
+    CheckPerms -->|No| DenyPerm[❌ No Permission]
+    
+    CheckUser -->|Yes| Allow
+    CheckCompany -->|Yes| Allow
+    CheckRoles -->|Yes| Allow
+    CheckPerms -->|Yes| Allow[✅ Access Granted]
+    
+    style Request fill:#e3f2fd
+    style JWT fill:#ffeb3b,stroke:#333,color:#333
+    style Allow fill:#4caf50,stroke:#fff,color:#fff
+    style Deny fill:#f44336,stroke:#fff,color:#fff
+    style DenyUser fill:#f44336,stroke:#fff,color:#fff
+    style DenyCompany fill:#f44336,stroke:#fff,color:#fff
+    style DenyRole fill:#f44336,stroke:#fff,color:#fff
+    style DenyPerm fill:#f44336,stroke:#fff,color:#fff
+```
+
 ### Module Structure
 ```
 auth/
