@@ -1,15 +1,179 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model Company {
+  id          String   @id @default(uuid())
+  name        String
+  subdomain   String   @unique // e.g., "abc" for abc.myerp.com
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users       User[]
+  roles       Role[]
+  modules     CompanyModule[]
+
+  @@index([subdomain])
+}
+
+model CompanyModule {
+  id        String  @id @default(uuid())
+  companyId String
+  module    Module
+  enabled   Boolean @default(false)
+  settings  Json?   // Flexible settings for the module
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, module])
+  @@index([companyId])
+}
+
+enum Module {
+  HRM
+  ATTENDANCE
+  PAYROLL
+  REPORTS
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  email                String    @unique @db.VarChar(255)
+  password             String
+  name                 String?
+  phone                String?
+  isActive             Boolean   @default(true)
+  forcePasswordChange Boolean   @default(true)
+  tokenVersion         Int       @default(0)
+  companyId            String
+  isCompanyAdmin       Boolean   @default(false) // Flag for company admin access
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdById          String?
+  updatedById          String?
+  deletedById          String?
+  deletedAt            DateTime?
+  
+  // Relations
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userRoles            UserRole[]
+  authLogs             AuthLog[]
+  sessions             Session[]
+
+  @@index([email])
+  @@index([companyId])
+}
+
+
+model Role {
+  id              String           @id @default(uuid())
+  name            String
+  description     String?
+  companyId       String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  createdById     String?
+  updatedById     String?
+  deletedById     String?
+  deletedAt       DateTime?
+  
+  // Relations
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@index([companyId])
+  @@unique([name, companyId], name: "role_name_company_unique")
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  description     String?
+  category        String?          // Group permissions like 'USER_MANAGEMENT', 'PAYROLL', etc.
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+
+  @@index([category])
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  companyId    String     // Tenant scoping for extra security
+  createdAt    DateTime   @default(now())
+  createdById  String?
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId, companyId])
+  @@index([companyId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  id          String   @id @default(uuid())
+  userId      String
+  roleId      String
+  companyId   String
+  createdAt   DateTime @default(now())
+  createdById String?
+  user        User     @relation(fields: [userId], references: [id])
+  role        Role     @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId, companyId])
+  @@index([companyId])
+}
+
+model AuthLog {
+  id         String      @id @default(uuid())
+  userId     String
+  companyId  String
+  ip         String
+  userAgent  String
+  type       AuthLogType
+  success    Boolean
+  timestamp  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([timestamp])
+}
+
+enum AuthLogType {
+  LOGIN
+  LOGOUT
+  FAIL
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String
+  companyId   String
+  userAgent   String
+  ip          String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  revokedAt   DateTime?
+  tokenHash   String   // Store a hash of the refresh token
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([createdAt])
 }
