@@ -33,6 +33,84 @@ The User Module provides comprehensive user profile management, session control,
 
 ## 🏗️ Architecture
 
+### User Profile Management Flow
+```mermaid
+sequenceDiagram
+    participant Client
+    participant JwtGuard
+    participant UserController
+    participant UserService
+    participant Database
+    
+    Client->>JwtGuard: GET /users/profile<br/>Authorization: Bearer token
+    JwtGuard->>JwtGuard: Validate JWT
+    JwtGuard->>UserController: Request with user context
+    
+    UserController->>UserService: getProfile(userId)
+    UserService->>Database: findUser(userId)
+    Database-->>UserService: User data
+    UserService-->>UserController: Sanitized profile
+    UserController-->>Client: Profile response
+```
+
+### Session Management Architecture
+```mermaid
+flowchart TD
+    User[👤 User Login] --> CreateSession[📱 Create Session]
+    CreateSession --> SessionData[💾 Store Session Data<br/>• Device Info<br/>• IP Address<br/>• User Agent<br/>• Refresh Token Hash]
+    
+    SessionData --> ActiveSessions[📋 Active Sessions List]
+    ActiveSessions --> ManageSessions{🛠️ Session Actions}
+    
+    ManageSessions --> ViewAll[👁️ View All Sessions]
+    ManageSessions --> Logout[🚪 Logout Current]
+    ManageSessions --> LogoutAll[🚫 Logout All Devices]
+    ManageSessions --> LogoutOthers[🔄 Logout Other Devices]
+    
+    ViewAll --> ShowSessions[📱💻📟 Show Device List]
+    Logout --> RevokeOne[❌ Revoke Single Session]
+    LogoutAll --> RevokeAll[❌ Revoke All Sessions]
+    LogoutOthers --> RevokeOthers[❌ Keep Current Only]
+    
+    style User fill:#e3f2fd
+    style CreateSession fill:#4caf50,stroke:#fff,color:#fff
+    style ActiveSessions fill:#ffeb3b,stroke:#333,color:#333
+    style RevokeOne fill:#f44336,stroke:#fff,color:#fff
+    style RevokeAll fill:#f44336,stroke:#fff,color:#fff
+    style RevokeOthers fill:#ff9800,stroke:#fff,color:#fff
+```
+
+### Multi-Device Security Model
+```mermaid
+graph TB
+    Login[🔐 User Login] --> Device1[📱 Mobile Device]
+    Login --> Device2[💻 Laptop Browser]
+    Login --> Device3[🖥️ Desktop App]
+    
+    Device1 --> Session1[📋 Session 1<br/>Mobile iOS<br/>IP: 192.168.1.10]
+    Device2 --> Session2[📋 Session 2<br/>Chrome Browser<br/>IP: 10.0.0.50]
+    Device3 --> Session3[📋 Session 3<br/>Desktop App<br/>IP: 172.16.0.100]
+    
+    Session1 --> Token1[🔑 Refresh Token 1]
+    Session2 --> Token2[🔑 Refresh Token 2]
+    Session3 --> Token3[🔑 Refresh Token 3]
+    
+    Token1 --> Secure1[🔒 Secure Storage<br/>Hash in DB]
+    Token2 --> Secure2[🔒 Secure Storage<br/>Hash in DB]
+    Token3 --> Secure3[🔒 Secure Storage<br/>Hash in DB]
+    
+    User[👤 User] --> ViewSessions[👁️ View All Sessions]
+    ViewSessions --> SessionList[📋 Session Management]
+    SessionList --> LogoutDevice[🚪 Logout Specific Device]
+    
+    style Login fill:#e1f5fe
+    style User fill:#e1f5fe
+    style Session1 fill:#4caf50,stroke:#fff,color:#fff
+    style Session2 fill:#4caf50,stroke:#fff,color:#fff
+    style Session3 fill:#4caf50,stroke:#fff,color:#fff
+    style LogoutDevice fill:#f44336,stroke:#fff,color:#fff
+```
+
 ### Module Structure
 ```
 users/
