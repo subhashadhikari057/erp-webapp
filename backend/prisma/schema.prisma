@@ -7,6 +7,42 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Company {
+  id          String   @id @default(uuid())
+  name        String
+  subdomain   String   @unique // e.g., "abc" for abc.myerp.com
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users       User[]
+  roles       Role[]
+  modules     CompanyModule[]
+
+  @@index([subdomain])
+}
+
+model CompanyModule {
+  id        String  @id @default(uuid())
+  companyId String
+  module    Module
+  enabled   Boolean @default(false)
+  settings  Json?   // Flexible settings for the module
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, module])
+  @@index([companyId])
+}
+
+enum Module {
+  HRM
+  ATTENDANCE
+  PAYROLL
+  REPORTS
+}
+
 model User {
   id                   String    @id @default(uuid())
   email                String    @unique @db.VarChar(255)
@@ -17,6 +53,7 @@ model User {
   forcePasswordChange Boolean   @default(true)
   tokenVersion         Int       @default(0)
   companyId            String
+  isCompanyAdmin       Boolean   @default(false) // Flag for company admin access
   lastLoginAt          DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -24,8 +61,11 @@ model User {
   updatedById          String?
   deletedById          String?
   deletedAt            DateTime?
+  
+  // Relations
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   userRoles            UserRole[]
-  authLogs             AuthLog[] // 🔁 reverse relation
+  authLogs             AuthLog[]
   sessions             Session[]
 
   @@index([email])
@@ -44,6 +84,9 @@ model Role {
   updatedById     String?
   deletedById     String?
   deletedAt       DateTime?
+  
+  // Relations
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   userRoles       UserRole[]
   rolePermissions RolePermission[]
 

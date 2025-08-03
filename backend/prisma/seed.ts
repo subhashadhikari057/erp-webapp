@@ -7,9 +7,22 @@ async function main() {
   const SUPERADMIN_COMPANY_ID = 'global'; // fixed value for now
   const SUPERADMIN_ROLE_ID = 'superadmin'; // same as used in token payload
 
-  console.log('🌱 Seeding superadmin user and role...');
+  console.log('🌱 Seeding global company and superadmin...');
 
-  // 1. Create superadmin role if not exists
+  // 1. Create global company for superadmin
+  const globalCompany = await prisma.company.upsert({
+    where: { id: SUPERADMIN_COMPANY_ID },
+    update: {},
+    create: {
+      id: SUPERADMIN_COMPANY_ID,
+      name: 'System Administration',
+      subdomain: 'admin',
+      isActive: true,
+    },
+  });
+  console.log('✅ Global company created:', globalCompany.name);
+
+  // 2. Create superadmin role if not exists
   const role = await prisma.role.upsert({
     where: {
       role_name_company_unique: {
@@ -28,7 +41,7 @@ async function main() {
     },
   });
 
-  // 2. Create superadmin user
+  // 3. Create superadmin user
   const password = await bcrypt.hash('Superadmin123!', 10);
 
   const user = await prisma.user.upsert({
@@ -43,7 +56,7 @@ async function main() {
     },
   });
 
-  // 3. Link user to superadmin role
+  // 4. Link user to superadmin role
   await prisma.userRole.upsert({
     where: {
       userId_roleId_companyId: {

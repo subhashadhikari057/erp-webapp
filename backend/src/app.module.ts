@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/users/user.module';
+import { SuperadminModule } from './modules/superadmin/superadmin.module';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { RATE_LIMIT_CONFIG } from './config/rate-limit.config';
 
@@ -29,6 +30,7 @@ import { RATE_LIMIT_CONFIG } from './config/rate-limit.config';
     ]),
     AuthModule,
     UserModule,
+    SuperadminModule,
   ],
   controllers: [AppController],
   providers: [

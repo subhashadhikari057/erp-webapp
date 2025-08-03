@@ -1,0 +1,235 @@
+// 🏢 SIMPLIFIED MULTI-TENANT SCHEMA (Based on Feedback)
+
+// ==========================================
+// CORE COMPANY MODEL (Simplified)
+// ==========================================
+
+model Company {
+  id                String          @id @default(uuid())
+  name              String          // "ABC Corporation"
+  subdomain         String          @unique // "abc" (for abc.myerp.com)
+  domain            String?         // Custom domain: "erp.abccorp.com" (optional)
+  
+  // Optional contact info (no email verification for now)
+  email             String?         // Optional - no SMTP needed
+  phone             String?
+  address           String?
+  
+  // Simple settings
+  isActive          Boolean         @default(true)
+  maxUsers          Int             @default(50)  // Simple limit
+  timezone          String          @default("UTC")
+  currency          String          @default("USD")
+  
+  // Relations
+  users             User[]
+  roles             Role[]
+  modules           CompanyModule[]
+  
+  // Audit
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  @@index([subdomain])
+  @@index([isActive])
+}
+
+// ==========================================
+// SIMPLIFIED MODULES (Broader Categories)
+// ==========================================
+
+model CompanyModule {
+  id        String      @id @default(uuid())
+  companyId String
+  module    ModuleType
+  enabled   Boolean     @default(true)
+  
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  
+  @@unique([companyId, module])
+  @@index([companyId])
+}
+
+enum ModuleType {
+  HRM           // Human Resource Management (employees, roles, etc.)
+  ATTENDANCE    // Time tracking, attendance, leaves
+  PAYROLL       // Salary, payslips, payroll processing
+  REPORTS       // Reports and analytics
+  // INVENTORY  // Will add later when needed
+  // PROJECTS   // Will add later when needed
+  // FINANCE    // Will add later when needed
+}
+
+// ==========================================
+// USER MODEL (Simplified - No UserType)
+// ==========================================
+
+model User {
+  id                   String    @id @default(uuid())
+  email                String    @unique @db.VarChar(255)
+  password             String
+  name                 String?
+  phone                String?
+  isActive             Boolean   @default(true)
+  forcePasswordChange Boolean   @default(true)
+  tokenVersion         Int       @default(0)
+  
+  // Company Relation  
+  companyId            String
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Simple company admin flag (instead of complex permissions)
+  isCompanyAdmin       Boolean   @default(false)
+  
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdById          String?
+  updatedById          String?
+  deletedById          String?
+  deletedAt            DateTime?
+  
+  // Relations
+  userRoles            UserRole[]
+  authLogs             AuthLog[]
+  sessions             Session[]
+
+  @@index([email])
+  @@index([companyId])
+  @@index([isCompanyAdmin])
+}
+
+// ==========================================
+// ROLE MODEL (Company Scoped)
+// ==========================================
+
+model Role {
+  id              String           @id @default(uuid())
+  name            String           // "HR Manager", "Accountant", "Employee"
+  description     String?
+  
+  // Company Relation
+  companyId       String
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  createdById     String?
+  updatedById     String?
+  deletedById     String?
+  deletedAt       DateTime?
+  
+  // Relations
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@index([companyId])
+  @@unique([name, companyId], name: "role_name_company_unique")
+}
+
+// ==========================================
+// PERMISSION MODEL (Company Scoped)
+// ==========================================
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           // "users:read", "payroll:process", etc.
+  description     String?
+  category        String?          // "HRM", "PAYROLL", "ATTENDANCE", "REPORTS"
+  
+  // Company scoped permissions
+  companyId       String
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+
+  @@index([category])
+  @@index([companyId])
+  @@unique([name, companyId], name: "permission_name_company_unique")
+}
+
+// ==========================================
+// JUNCTION TABLES (Same as before)
+// ==========================================
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  companyId    String
+  createdAt    DateTime   @default(now())
+  createdById  String?
+  
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId, companyId])
+  @@index([companyId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  id          String   @id @default(uuid())
+  userId      String
+  roleId      String
+  companyId   String
+  createdAt   DateTime @default(now())
+  createdById String?
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, companyId])
+  @@index([companyId])
+}
+
+// ==========================================
+// EXISTING MODELS (Keep as is)
+// ==========================================
+
+model AuthLog {
+  id         String      @id @default(uuid())
+  userId     String
+  companyId  String
+  ip         String
+  userAgent  String
+  type       AuthLogType
+  success    Boolean
+  timestamp  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([timestamp])
+}
+
+enum AuthLogType {
+  LOGIN
+  LOGOUT
+  FAIL
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String
+  companyId   String
+  userAgent   String
+  ip          String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  revokedAt   DateTime?
+  tokenHash   String
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([createdAt])
+}
