@@ -153,9 +153,36 @@ model AuthLog {
 }
 
 enum AuthLogType {
+  // Authentication operations
   LOGIN
   LOGOUT
   FAIL
+  
+  // User self-service operations
+  PROFILE_UPDATE
+  PASSWORD_CHANGE
+  
+  // Company operations (superadmin)
+  COMPANY_CREATE
+  COMPANY_UPDATE
+  COMPANY_DELETE
+  COMPANY_MODULE_UPDATE
+  
+  // Future: Company admin operations (to be added)
+  // USER_CREATE
+  // USER_UPDATE
+  // USER_DELETE
+  // ROLE_CREATE
+  // ROLE_UPDATE
+  // ROLE_DELETE
+  // PERMISSION_ASSIGN
+  // PERMISSION_REVOKE
+  
+  // Future: HR/Payroll operations (to be added)
+  // EMPLOYEE_CREATE
+  // EMPLOYEE_UPDATE
+  // PAYROLL_PROCESS
+  // ATTENDANCE_RECORD
 }
 
 model Session {
@@ -176,4 +203,5 @@ model Session {
   @@index([companyId])
   @@index([isActive])
   @@index([createdAt])
+  @@index([tokenHash])
 }

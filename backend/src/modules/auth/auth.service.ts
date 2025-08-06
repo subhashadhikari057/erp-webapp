@@ -86,12 +86,16 @@ export class AuthService {
       ur.role.rolePermissions.map(rp => rp.permission.name)
     );
 
+    const roleIds = user.userRoles.map(ur => ur.roleId);
+    const isSuperadmin = roleIds.includes('superadmin');
+
     const payload: JwtPayload = {
       userId: user.id,
       companyId: user.companyId,
-      roleIds: user.userRoles.map(ur => ur.roleId),
+      roleIds,
       permissions,
       tokenVersion: user.tokenVersion,
+      isSuperadmin,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -163,12 +167,16 @@ export class AuthService {
         ur.role.rolePermissions.map(rp => rp.permission.name)
       );
 
+      const roleIds = user.userRoles.map(ur => ur.roleId);
+      const isSuperadmin = roleIds.includes('superadmin');
+
       const newPayload: JwtPayload = {
         userId: user.id,
         companyId: user.companyId,
-        roleIds: user.userRoles.map(ur => ur.roleId),
+        roleIds,
         permissions,
         tokenVersion: user.tokenVersion,
+        isSuperadmin,
       };
 
       const [accessToken, refreshToken] = await Promise.all([
@@ -330,8 +338,8 @@ export class AuthService {
     }
   }
 
-  // Log events
-  async logAuthEvent({
+  // Log audit events (authentication + other operations)
+  async logAuditEvent({
     userId,
     companyId,
     ip,
@@ -343,7 +351,8 @@ export class AuthService {
     companyId?: string;
     ip?: string;
     userAgent?: string;
-    type: 'LOGIN' | 'LOGOUT' | 'FAIL';
+    type: 'LOGIN' | 'LOGOUT' | 'FAIL' | 'PROFILE_UPDATE' | 'PASSWORD_CHANGE' | 
+          'COMPANY_CREATE' | 'COMPANY_UPDATE' | 'COMPANY_DELETE' | 'COMPANY_MODULE_UPDATE';
     success: boolean;
   }) {
     try {
@@ -360,5 +369,24 @@ export class AuthService {
     } catch {
       // Don't throw on logging failure
     }
+  }
+
+  // Legacy method for backward compatibility
+  async logAuthEvent({
+    userId,
+    companyId,
+    ip,
+    userAgent,
+    type,
+    success,
+  }: {
+    userId?: string;
+    companyId?: string;
+    ip?: string;
+    userAgent?: string;
+    type: 'LOGIN' | 'LOGOUT' | 'FAIL';
+    success: boolean;
+  }) {
+    return this.logAuditEvent({ userId, companyId, ip, userAgent, type, success });
   }
 }

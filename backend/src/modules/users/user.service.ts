@@ -1,12 +1,16 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authService: AuthService
+  ) {}
 
   /**
    * Get minimal info for the user by their ID, including roles.
@@ -51,10 +55,122 @@ export class UserService {
 
 
   /**
-   * Update the profile for the current user.
+   * Get user profile with tenant validation
+   * Ensures user can only access their own profile within their company
+   */
+  async getUserProfile(userId: string, tenantId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { 
+        id: userId,
+        companyId: tenantId  // Enforce tenant isolation
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        companyId: true,
+        isActive: true,
+        isCompanyAdmin: true,
+        lastLoginAt: true,
+        createdAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+              },
+            },
+          },
+        },
+        company: {
+          select: {
+            id: true,
+            name: true,
+            subdomain: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found or access denied');
+    }
+
+    // Flatten roles for easy response
+    const roles = user?.userRoles?.map(ur => ur.role) ?? [];
+    const { userRoles, ...rest } = user;
+
+    return {
+      ...rest,
+      roles,
+    };
+  }
+
+  /**
+   * Get all users within the same company (tenant isolation)
+   */
+  async getCompanyUsers(tenantId: string) {
+    const users = await this.prisma.user.findMany({
+      where: { 
+        companyId: tenantId,
+        isActive: true,
+        deletedAt: null  // Only active, non-deleted users
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isCompanyAdmin: true,
+        lastLoginAt: true,
+        createdAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [
+        { isCompanyAdmin: 'desc' },  // Company admins first
+        { name: 'asc' },            // Then by name
+      ],
+    });
+
+    // Transform the response to flatten roles
+    return users.map(user => {
+      const roles = user.userRoles?.map(ur => ur.role) ?? [];
+      const { userRoles, ...rest } = user;
+      return {
+        ...rest,
+        roles,
+      };
+    });
+  }
+
+  /**
+   * Update the profile for the current user with tenant validation.
    * Throws if user not found or email is already taken by another user.
    */
-  async updateProfile(userId: string, dto: UpdateProfileDto) {
+  async updateProfile(userId: string, tenantId: string, dto: UpdateProfileDto) {
+    // First verify user belongs to the tenant
+    const existingUser = await this.prisma.user.findUnique({
+      where: { 
+        id: userId,
+        companyId: tenantId  // Enforce tenant isolation
+      },
+    });
+
+    if (!existingUser) {
+      throw new BadRequestException('User not found or access denied');
+    }
     // If email is being updated, ensure uniqueness
     if (dto.email) {
       const existing = await this.prisma.user.findUnique({
@@ -67,7 +183,10 @@ export class UserService {
 
     // Only update fields that are provided (PATCH semantics)
     const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
+      where: { 
+        id: userId,
+        companyId: tenantId  // Enforce tenant isolation on update too
+      },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.email !== undefined && { email: dto.email }),
@@ -82,6 +201,14 @@ export class UserService {
         isActive: true,
         lastLoginAt: true,
       },
+    });
+
+    // Audit log for profile update
+    await this.authService.logAuditEvent({
+      userId,
+      companyId: tenantId,
+      type: 'PROFILE_UPDATE',
+      success: true,
     });
 
     return updatedUser;
@@ -112,6 +239,14 @@ export class UserService {
         forcePasswordChange: false,   // Optional: clear force flag if used
         tokenVersion: user.tokenVersion + 1, // Invalidate existing refresh tokens
       },
+    });
+
+    // Audit log for password change
+    await this.authService.logAuditEvent({
+      userId,
+      companyId: user.companyId,
+      type: 'PASSWORD_CHANGE',
+      success: true,
     });
 
     return { message: 'Password changed successfully.' };
