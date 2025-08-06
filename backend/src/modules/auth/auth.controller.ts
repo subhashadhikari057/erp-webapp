@@ -34,7 +34,12 @@ export class AuthController {
       const tokens = await this.authService.login(dto, ip, userAgent);
 
       const isProd = process.env.NODE_ENV === 'production';
+      
+      // Debug logging
+      console.log('🔍 Cookie Debug - NODE_ENV:', process.env.NODE_ENV);
+      console.log('🔍 Cookie Debug - isProd:', isProd);
 
+      // Always set refreshToken cookie
       res.cookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
         secure: isProd,
@@ -43,15 +48,16 @@ export class AuthController {
         path: '/auth',
       });
 
-      if (!isProd) {
-        res.cookie('accessToken', tokens.accessToken, {
-          httpOnly: true,
-          secure: false,
-          sameSite: 'lax',
-          maxAge: 15 * 60 * 1000,
-          path: '/',
-        });
-      }
+      // Always set accessToken cookie in development, optional in production
+      console.log('🍪 Setting accessToken cookie...');
+      res.cookie('accessToken', tokens.accessToken, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        maxAge: 15 * 60 * 1000,
+        path: '/',
+      });
+      console.log('✅ AccessToken cookie set');
 
       const user = this.authService.decodeJwt(tokens.accessToken);
       await this.authService.logAuthEvent({

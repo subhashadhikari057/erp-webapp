@@ -156,7 +156,7 @@ export class ModuleGuard implements CanActivate {
   }
 
   private isSuperadmin(user: JwtPayload): boolean {
-    return user.roleIds?.includes('superadmin') || false;
+    return user.isSuperadmin || false;
   }
 
   /**

@@ -40,7 +40,7 @@ import {
       }
 
       // Superadmin bypasses all permission checks
-      if (user.roleIds.includes('superadmin')) {
+      if (user.isSuperadmin) {
         return true;
       }
 
