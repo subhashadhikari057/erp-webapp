@@ -1,15 +1,20 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
 import { Module } from '@prisma/client';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { ManageCompanyModulesDto } from './dto/manage-company-modules.dto';
 import { CompanyResponseDto, CompanyListResponseDto } from './dto/company-response.dto';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class SuperadminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private authService: AuthService
+  ) {}
 
   async createCompany(createCompanyDto: CreateCompanyDto): Promise<CompanyResponseDto> {
     const { name, subdomain, adminEmail, adminName, adminPhone, adminPassword } = createCompanyDto;
@@ -112,8 +117,20 @@ export class SuperadminService {
     if (result.generatedPassword) {
       response.generatedPassword = result.generatedPassword;
       response.passwordNote = `⚠️ Auto-generated password. Admin must change on first login.`;
-      console.log(`🔑 Generated password for ${adminEmail}: ${result.generatedPassword}`);
+      
+      // Only log passwords in development (never in production for security)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🔑 Generated password for ${adminEmail}: ${result.generatedPassword}`);
+      }
     }
+
+    // Audit log for company creation
+    await this.authService.logAuditEvent({
+      userId: 'superadmin', // TODO: Get from JWT context when available
+      companyId: 'global',
+      type: 'COMPANY_CREATE',
+      success: true,
+    });
 
     return response;
   }
@@ -272,6 +289,14 @@ export class SuperadminService {
 
     await Promise.all(updates);
 
+    // Audit log for company module update
+    await this.authService.logAuditEvent({
+      userId: 'superadmin', // TODO: Get from JWT context when available
+      companyId: 'global',
+      type: 'COMPANY_MODULE_UPDATE',
+      success: true,
+    });
+
     return { message: 'Company modules updated successfully' };
   }
 
@@ -331,6 +356,14 @@ export class SuperadminService {
       });
     });
 
+    // Audit log for company deletion
+    await this.authService.logAuditEvent({
+      userId: 'superadmin', // TODO: Get from JWT context when available
+      companyId: 'global',
+      type: 'COMPANY_DELETE',
+      success: true,
+    });
+
     return { message: `Company '${company.name}' and all related data deleted successfully` };
   }
 
@@ -346,11 +379,8 @@ export class SuperadminService {
   }
 
   private generateRandomPassword(): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
+    // Generate cryptographically secure 12-character password
+    // Uses base64url encoding (URL-safe, no padding) for readability
+    return randomBytes(12).toString('base64url');
   }
 }

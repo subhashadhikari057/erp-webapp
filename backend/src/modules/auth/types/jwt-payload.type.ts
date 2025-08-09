@@ -5,5 +5,6 @@ export type JwtPayload = {
     roleIds: string[];       // list of assigned role IDs
     permissions: string[];   // flat permission keys like "employee.view"
     tokenVersion: number;
+    isSuperadmin?: boolean;  // true if user has superadmin role
   };
   
